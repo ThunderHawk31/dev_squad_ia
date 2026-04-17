@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+.env
+runs_history.json
+*.db
+chroma/
+.chroma/
+*.log
