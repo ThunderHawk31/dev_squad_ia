@@ -13,6 +13,12 @@ from tools import (
     tavily_search_tool, n8n_cleaner_tool, get_filesystem_tools,
     pytest_runner_tool, rss_feed_tool
 )
+from prompts import (
+    AGENT_MANAGER_GOAL, AGENT_MANAGER_BACKSTORY,
+    AGENT_BACKEND_BACKSTORY, AGENT_FRONTEND_BACKSTORY,
+    AGENT_SECURITY_ROLE, AGENT_SECURITY_GOAL, AGENT_SECURITY_BACKSTORY,
+    AGENT_BUILDFIXER_BACKSTORY, AGENT_RESEARCHER_GOAL,
+)
 
 claude_sonnet = LLM(model="anthropic/claude-sonnet-4-20250514", temperature=0.2, max_tokens=8192)
 claude_haiku  = LLM(model="anthropic/claude-haiku-4-5-20251001", temperature=0.2, max_tokens=8192)
@@ -23,11 +29,8 @@ def make_agents(project_root: str):
 
     manager = Agent(
         role="Chef d'Orchestre",
-        goal="Planifier avec fichiers exacts. Jamais demander au back d'explorer la structure.",
-        backstory=(
-            "Tech lead senior. Tu lis le CLAUDE.md injecté dans la tâche. "
-            "Tu ne délègues jamais pour 'découvrir' la structure — tu l'as déjà."
-        ),
+        goal=AGENT_MANAGER_GOAL,
+        backstory=AGENT_MANAGER_BACKSTORY,
         llm=claude_sonnet,
         verbose=True,
         allow_delegation=True,
@@ -37,11 +40,7 @@ def make_agents(project_root: str):
     backend_agent = Agent(
         role="Développeur Back-end",
         goal=f"Modifier des fichiers Python dans {project_root}. Lire un fichier précis, jamais un dossier.",
-        backstory=(
-            "Expert FastAPI + Supabase. "
-            "Règle absolue : jamais BaseHTTPMiddleware (conflit CORS connu). "
-            "Port via $PORT Railway, jamais hardcodé."
-        ),
+        backstory=AGENT_BACKEND_BACKSTORY,
         llm=claude_haiku,
         tools=[read_tool, read_lines_tool, write_tool],  # read_lines_tool = lecture ciblée lignes X→Y
         verbose=True,
@@ -51,11 +50,7 @@ def make_agents(project_root: str):
     frontend_agent = Agent(
         role="Développeur Front-end",
         goal="Composants React/Vite. Design system FindUP uniquement.",
-        backstory=(
-            "Expert React. Couleurs : #07101F/#2563EB/#D4A853. "
-            "Composants dans src/components/ui/. "
-            "Jamais Tailwind, Bootstrap, <form> HTML, React Router."
-        ),
+        backstory=AGENT_FRONTEND_BACKSTORY,
         llm=claude_haiku,
         tools=[read_tool, read_lines_tool, write_tool],  # lecture ciblée disponible
         verbose=True,
@@ -86,11 +81,7 @@ def make_agents(project_root: str):
             "Corriger les problèmes détectés par le Testeur. "
             "Fix minimal, cause racine identifiée, correction documentée."
         ),
-        backstory=(
-            "Expert debugging. Tu reçois les rapports du Testeur. "
-            "Tu lis le fichier exact, tu identifies la cause racine, tu appliques le fix minimal. "
-            "Si trop complexe → tu escalades à l'Error Triage."
-        ),
+        backstory=AGENT_BUILDFIXER_BACKSTORY,
         llm=claude_haiku,
         tools=[read_tool, read_lines_tool, write_tool],  # lecture ciblée pour identifier la cause
         verbose=True,
@@ -116,25 +107,9 @@ def make_agents(project_root: str):
     )
 
     security_agent = Agent(
-        role="Auditeur Sécurité — Hacker Offensif",
-        goal=(
-            "Trouver des failles dans le code. Ton job n'est PAS de valider — "
-            "c'est de CASSER. Si tu ne trouves rien, c'est que tu n'as pas cherché assez."
-        ),
-        backstory=(
-            "Tu es un pentesteur senior qui pense comme un attaquant. "
-            "Tu as réalisé l'audit Antigravity de FindUP et trouvé 6 failles. "
-            "Ta méthode : ne jamais demander 'est-ce safe ?' mais toujours "
-            "'comment je casse ça ?'.\n"
-            "Pour chaque bloc de code modifié, tu te poses ces 3 questions :\n"
-            "  1. Comment injecter des données malveillantes ici ?\n"
-            "  2. Comment contourner l'authentification sur cet endpoint ?\n"
-            "  3. Comment provoquer une fuite de données depuis cette fonction ?\n"
-            "Si tu ne trouves aucune réponse après avoir vraiment cherché → tu le dis "
-            "explicitement : 'Vecteur X : aucune faille détectée après analyse offensive.'\n"
-            "Règles de rapport : CRITIQUE (exploitable immédiatement) / "
-            "MOYEN (exploitable avec effort) / INFO (bonne pratique manquante)."
-        ),
+        role=AGENT_SECURITY_ROLE,
+        goal=AGENT_SECURITY_GOAL,
+        backstory=AGENT_SECURITY_BACKSTORY,
         llm=claude_sonnet,
         tools=[read_tool, tavily_search_tool],
         verbose=True,
@@ -166,10 +141,7 @@ def make_agents(project_root: str):
     # Agent dédié au tab Recherche Web — Tavily + RSS, pas d'accès filesystem
     researcher_agent = Agent(
         role="Chercheur Web",
-        goal=(
-            "Trouver des informations fiables sur le web via Tavily et flux RSS. "
-            "Recherche en 3 passes. Triangulation : CONFIRMÉ (3+) / PARTIEL (2) / NON VÉRIFIÉ (1)."
-        ),
+        goal=AGENT_RESEARCHER_GOAL,
         backstory=(
             "Expert veille technologique. Tu ne codes pas — tu cherches, triangules, synthétises. "
             "Tu fais 3 passes Tavily et consultes les flux RSS pour les actualités récentes. "
