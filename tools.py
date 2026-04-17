@@ -29,10 +29,105 @@ else:
 
 # ── Filesystem dynamique (un pair read/write par projet) ─────────────────────
 def get_filesystem_tools(project_root: str):
-    """Retourne (read_tool, write_tool) isolés sur project_root."""
-    read_tool = FileReadTool(file_path=project_root)
-    write_tool = SafeFileWriterTool()
-    return read_tool, write_tool
+    """Retourne (read_tool, write_tool, read_lines_tool) isolés sur project_root."""
+    read_tool       = FileReadTool(file_path=project_root)
+    write_tool      = SafeFileWriterTool()
+    read_lines_tool = ReadFileLinesTools(project_root=project_root)
+    return read_tool, write_tool, read_lines_tool
+
+
+class ReadFileLinesTools(BaseTool):
+    """
+    Outil de lecture CHIRURGICALE d'un fichier — lignes X à Y uniquement.
+
+    Pourquoi cet outil plutôt que FileReadTool ?
+    - FileReadTool lit tout le fichier (800+ lignes = tokens inutiles)
+    - ReadFileLinesTools lit exactement les lignes demandées (~30-50 lignes)
+    - Réduit ~90% des tokens de lecture sur les gros fichiers
+
+    Usage recommandé :
+      1. Lecture ciblée  : start_line=254, num_lines=30
+      2. Remontée caller : start_line=1, num_lines=30 (imports + globals)
+      3. Vérif contexte  : start_line=N-5, num_lines=15 (5 lignes avant/après)
+    """
+    name: str = "read_file_lines"
+    description: str = (
+        "Lit uniquement les lignes X à Y d'un fichier. "
+        "TOUJOURS préférer cet outil à la lecture complète du fichier.\n"
+        "Paramètres :\n"
+        "  - file_path (str) : chemin absolu du fichier\n"
+        "  - start_line (int) : première ligne à lire (1-indexé)\n"
+        "  - num_lines (int) : nombre de lignes à lire (défaut 50, max 150)\n"
+        "Retourne : les lignes numérotées + contexte (total lignes du fichier).\n"
+        "Exemples :\n"
+        "  read_file_lines(file_path='/home/.../server.py', start_line=254, num_lines=30)\n"
+        "  read_file_lines(file_path='/home/.../server.py', start_line=1, num_lines=25)"
+    )
+    project_root: str = ""
+
+    def _run(self, file_path: str = "", start_line: int = 1, num_lines: int = 50) -> str:
+        # ── Validation inputs ──────────────────────────────────────────────
+        if not file_path:
+            return "ERREUR read_file_lines : paramètre file_path manquant."
+
+        abs_path = os.path.abspath(file_path)
+
+        # Whitelist : vérifier que le fichier est dans le projet
+        if self.project_root:
+            allowed_root = os.path.abspath(self.project_root)
+            if not abs_path.startswith(allowed_root):
+                return (
+                    f"REFUSÉ read_file_lines : fichier hors du projet.\n"
+                    f"Fichier demandé : {abs_path}\n"
+                    f"Racine autorisée : {allowed_root}"
+                )
+
+        if not os.path.exists(abs_path):
+            return f"ERREUR read_file_lines : fichier introuvable : {abs_path}"
+
+        if not os.path.isfile(abs_path):
+            return f"ERREUR read_file_lines : {abs_path} est un dossier, pas un fichier."
+
+        # ── Limites de sécurité ────────────────────────────────────────────
+        start_line = max(1, int(start_line))
+        num_lines  = max(1, min(int(num_lines), 150))  # cap à 150 lignes max
+
+        try:
+            with open(abs_path, encoding="utf-8", errors="ignore") as f:
+                all_lines = f.readlines()
+
+            total = len(all_lines)
+            end_line = min(start_line + num_lines - 1, total)
+
+            if start_line > total:
+                return (
+                    f"ERREUR read_file_lines : start_line={start_line} "
+                    f"dépasse la longueur du fichier ({total} lignes)."
+                )
+
+            # Extraire les lignes demandées
+            selected = all_lines[start_line - 1 : end_line]
+
+            # Formater avec numéros de lignes (style IDE)
+            formatted = []
+            for i, line in enumerate(selected, start=start_line):
+                formatted.append(f"{i:4d} │ {line}", )
+
+            header = (
+                f"📄 {os.path.basename(abs_path)} "
+                f"(lignes {start_line}–{end_line} sur {total} totales)\n"
+                f"{'─' * 60}\n"
+            )
+            footer = (
+                f"{'─' * 60}\n"
+                f"💡 Lignes restantes : {total - end_line} après ligne {end_line}\n"
+                f"   Pour lire la suite : start_line={end_line + 1}"
+            )
+
+            return header + "".join(formatted) + footer
+
+        except Exception as e:
+            return f"ERREUR read_file_lines : {e}"
 
 
 # ── Whitelist des dossiers autorisés en écriture ─────────────────────────────

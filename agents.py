@@ -9,14 +9,17 @@ Séparation des rôles :
 """
 
 from crewai import Agent, LLM
-from tools import tavily_search_tool, n8n_cleaner_tool, get_filesystem_tools, pytest_runner_tool, rss_feed_tool
+from tools import (
+    tavily_search_tool, n8n_cleaner_tool, get_filesystem_tools,
+    pytest_runner_tool, rss_feed_tool
+)
 
 claude_sonnet = LLM(model="anthropic/claude-sonnet-4-20250514", temperature=0.2, max_tokens=8192)
 claude_haiku  = LLM(model="anthropic/claude-haiku-4-5-20251001", temperature=0.2, max_tokens=8192)
 
 
 def make_agents(project_root: str):
-    read_tool, write_tool = get_filesystem_tools(project_root)
+    read_tool, write_tool, read_lines_tool = get_filesystem_tools(project_root)
 
     manager = Agent(
         role="Chef d'Orchestre",
@@ -40,7 +43,7 @@ def make_agents(project_root: str):
             "Port via $PORT Railway, jamais hardcodé."
         ),
         llm=claude_haiku,
-        tools=[read_tool, write_tool],  # pas Tavily : il code, il ne cherche pas
+        tools=[read_tool, read_lines_tool, write_tool],  # read_lines_tool = lecture ciblée lignes X→Y
         verbose=True,
         max_iter=8,
     )
@@ -54,7 +57,7 @@ def make_agents(project_root: str):
             "Jamais Tailwind, Bootstrap, <form> HTML, React Router."
         ),
         llm=claude_haiku,
-        tools=[read_tool, write_tool],  # pas Tavily : il code depuis le CLAUDE.md
+        tools=[read_tool, read_lines_tool, write_tool],  # lecture ciblée disponible
         verbose=True,
         max_iter=8,
     )
@@ -72,7 +75,7 @@ def make_agents(project_root: str):
             "Tu ne corriges pas — tu détectes et rapportes avec les vrais outputs pytest."
         ),
         llm=claude_sonnet,  # Sonnet requis : Haiku oublie 'content' sur les gros fichiers de tests
-        tools=[read_tool, write_tool, pytest_runner_tool],  # pas Tavily
+        tools=[read_tool, read_lines_tool, write_tool, pytest_runner_tool],
         verbose=True,
         max_iter=8,
     )
@@ -89,7 +92,7 @@ def make_agents(project_root: str):
             "Si trop complexe → tu escalades à l'Error Triage."
         ),
         llm=claude_haiku,
-        tools=[read_tool, write_tool],  # pas Tavily : il corrige du code, pas du web
+        tools=[read_tool, read_lines_tool, write_tool],  # lecture ciblée pour identifier la cause
         verbose=True,
         max_iter=8,
     )
